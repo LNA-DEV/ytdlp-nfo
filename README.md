@@ -12,10 +12,26 @@ Download videos using yt-dlp and automatically create NFO metadata files compati
 
 ## Installation
 
-### Using Homebrew (Linux)
+### Using Homebrew (macOS/Linux)
+
+First, tap the repository:
+
+```bash
+brew tap LNA-DEV/homebrew-tap
+```
+
+Then install:
 
 ```bash
 brew install ytdlp-nfo
+```
+
+### From Source
+
+```bash
+git clone https://github.com/LNA-DEV/ytdlp-nfo.git
+cd ytdlp-nfo
+pip install .
 ```
 
 ## Usage
