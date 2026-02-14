@@ -139,6 +139,8 @@ def download_video(url: str) -> tuple[int, bool]:
         "ignoreerrors": True,  # Continue on download errors
         "no_warnings": False,  # Show warnings so user knows what failed
         "download_archive": ".ytdlp-archive.txt",
+        "fragment_retries": 10,
+        "skip_unavailable_fragments": False,  # Abort instead of looping
     }
 
     had_errors = False
