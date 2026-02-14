@@ -6,7 +6,7 @@ import yt_dlp
 import yt_dlp.version
 import xml.etree.ElementTree as ET
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 def make_safe_name(name: str) -> str:
