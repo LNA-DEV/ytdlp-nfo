@@ -3,7 +3,10 @@ import sys
 import json
 from datetime import datetime
 import yt_dlp
+import yt_dlp.version
 import xml.etree.ElementTree as ET
+
+__version__ = "1.0.2"
 
 
 def make_safe_name(name: str) -> str:
@@ -184,6 +187,11 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: ytdlp-nfo <video_url>")
         return 1
+
+    if sys.argv[1] in ("--version", "-v"):
+        print(f"ytdlp-nfo {__version__}")
+        print(f"yt-dlp    {yt_dlp.version.__version__}")
+        return 0
 
     link = sys.argv[1]
     processed, had_errors = download_video(link)
