@@ -124,7 +124,7 @@ def create_nfo_from_json(json_path: str, nfo_path: str):
     tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
 
 
-def download_video(url: str):
+def download_video(url: str) -> int:
     ydl_opts = {
         "outtmpl": "%(title)s/%(title)s.%(ext)s",
         "merge_output_format": "mp4",
@@ -145,6 +145,7 @@ def download_video(url: str):
             print("Continuing to process any successfully downloaded items...")
 
     # Now scan every subfolder created
+    processed = 0
     for folder, subfolders, files in os.walk("."):
         info_files = [f for f in files if f.endswith(".info.json")]
         if not info_files:
@@ -166,19 +167,26 @@ def download_video(url: str):
                     break
 
             print("✔ Processed:", folder)
+            processed += 1
         except Exception as e:
             print(f"⚠ Error processing {folder}: {e}")
             print("Continuing to next item...")
+
+    return processed
 
 
 def main():
     if len(sys.argv) < 2:
         print("Usage: ytdlp-nfo <video_url>")
-        sys.exit(1)
+        return 1
 
     link = sys.argv[1]
-    download_video(link)
+    processed = download_video(link)
+    if processed == 0:
+        print("✘ No items were successfully processed")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
