@@ -124,7 +124,7 @@ def create_nfo_from_json(json_path: str, nfo_path: str):
     tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
 
 
-def download_video(url: str) -> int:
+def download_video(url: str) -> tuple[int, bool]:
     ydl_opts = {
         "outtmpl": "%(title)s/%(title)s.%(ext)s",
         "merge_output_format": "mp4",
@@ -135,14 +135,19 @@ def download_video(url: str) -> int:
         "format": "bv*+ba/best",
         "ignoreerrors": True,  # Continue on download errors
         "no_warnings": False,  # Show warnings so user knows what failed
+        "download_archive": ".ytdlp-archive.txt",
     }
 
+    had_errors = False
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
-            ydl.download([url])
+            retcode = ydl.download([url])
+            if retcode != 0:
+                had_errors = True
         except Exception as e:
             print(f"⚠ Error during download: {e}")
             print("Continuing to process any successfully downloaded items...")
+            had_errors = True
 
     # Now scan every subfolder created
     processed = 0
@@ -172,7 +177,7 @@ def download_video(url: str) -> int:
             print(f"⚠ Error processing {folder}: {e}")
             print("Continuing to next item...")
 
-    return processed
+    return processed, had_errors
 
 
 def main():
@@ -181,9 +186,12 @@ def main():
         return 1
 
     link = sys.argv[1]
-    processed = download_video(link)
+    processed, had_errors = download_video(link)
     if processed == 0:
         print("✘ No items were successfully processed")
+        return 1
+    if had_errors:
+        print(f"⚠ {processed} item(s) processed, but some items failed")
         return 1
     return 0
 
