@@ -197,9 +197,12 @@ def main():
 
     link = sys.argv[1]
     processed, had_errors = download_video(link)
-    if processed == 0:
+    if processed == 0 and had_errors:
         print("✘ No items were successfully processed")
         return 1
+    if processed == 0:
+        print("✔ All items already in archive")
+        return 0
     if had_errors:
         print(f"⚠ {processed} item(s) processed, but some items failed")
         return 1
