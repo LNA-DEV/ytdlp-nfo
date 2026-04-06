@@ -128,20 +128,28 @@ def create_nfo_from_json(json_path: str, nfo_path: str):
 
 
 def download_video(url: str) -> tuple[int, bool]:
+    container = os.environ.get("YTDLP_NFO_FORMAT", "mkv")
+    all_audio = os.environ.get("YTDLP_NFO_ALL_AUDIO", "true").lower() == "true"
+    subtitles = os.environ.get("YTDLP_NFO_SUBTITLES", "true").lower() == "true"
+
     ydl_opts = {
         "outtmpl": "%(title)s/%(title)s.%(ext)s",
-        "merge_output_format": "mp4",
+        "merge_output_format": container,
         "writeinfojson": True,
         "writethumbnail": True,
         "convert_thumbnails": "jpg",
         "ignoreconfig": True,
-        "format": "bv*+ba/best",
+        "format": "bv*+ba*/best" if all_audio else "bv*+ba/best",
+        "audio_multistreams": all_audio,
         "ignoreerrors": True,  # Continue on download errors
         "no_warnings": False,  # Show warnings so user knows what failed
         "download_archive": ".ytdlp-archive.txt",
         "fragment_retries": 10,
         "skip_unavailable_fragments": False,  # Abort instead of looping
     }
+    if subtitles:
+        ydl_opts["writesubtitles"] = True
+        ydl_opts["subtitleslangs"] = ["all"]
 
     had_errors = False
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
