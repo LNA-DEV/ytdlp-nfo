@@ -6,7 +6,7 @@ import yt_dlp
 import yt_dlp.version
 import xml.etree.ElementTree as ET
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 
 def make_safe_name(name: str) -> str:
@@ -25,6 +25,24 @@ def get_video_info(url: str) -> dict:
     }
     with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
         return ydl.extract_info(url, download=False)
+
+
+def discover_audio_formats(info: dict) -> dict[tuple, str]:
+    """Find best audio format ID for each (language, channels) combo.
+    Returns {(language, channels): format_id}. Keeps both surround and stereo per language."""
+    best = {}  # (lang, channels) -> (format_id, abr)
+    for f in info.get("formats") or []:
+        lang = f.get("language")
+        fid = f.get("format_id")
+        if not lang or not fid:
+            continue
+        if f.get("acodec", "none") != "none" and f.get("vcodec", "none") == "none":
+            channels = f.get("audio_channels") or 2
+            abr = f.get("abr") or 0
+            key = (lang, channels)
+            if key not in best or abr > best[key][1]:
+                best[key] = (fid, abr)
+    return {k: fid for k, (fid, _) in best.items()}
 
 
 def format_upload_date(upload_date: str):
@@ -95,11 +113,12 @@ def create_nfo_from_json(json_path: str, nfo_path: str):
 
     if video_id:
         uid = ET.SubElement(movie, "uniqueid")
-        uid.set("type", webpage_url_domain)
+        uid.set("type", webpage_url_domain or "unknown")
         uid.set("default", "true")
         uid.text = video_id
 
-    if "porn" or "Porn" or "Fetish" or "fetish" in str(extractor):
+    extractor_lower = str(extractor).lower()
+    if any(kw in extractor_lower for kw in ("porn", "fetish")):
         ET.SubElement(movie, "mpaa").text = "XXX"
     elif age_limit:
         ET.SubElement(movie, "mpaa").text = str(age_limit)
@@ -127,36 +146,20 @@ def create_nfo_from_json(json_path: str, nfo_path: str):
     tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
 
 
-def download_video(url: str) -> tuple[int, bool]:
-    container = os.environ.get("YTDLP_NFO_FORMAT", "mkv")
-    all_audio = os.environ.get("YTDLP_NFO_ALL_AUDIO", "true").lower() == "true"
-    subtitles = os.environ.get("YTDLP_NFO_SUBTITLES", "true").lower() == "true"
+def _flatten_entries(info: dict) -> list[dict]:
+    """Recursively flatten nested playlists into individual video entries."""
+    if "entries" not in info:
+        return [info]
+    result = []
+    for entry in info.get("entries") or []:
+        if entry is None:
+            continue
+        result.extend(_flatten_entries(entry))
+    return result
 
-    ydl_opts = {
-        "outtmpl": "%(title)s/%(title)s.%(ext)s",
-        "merge_output_format": container,
-        "writeinfojson": True,
-        "writethumbnail": True,
-        "convert_thumbnails": "jpg",
-        "ignoreconfig": True,
-        "format": (
-            "bv+ba+ba.2+ba.3+ba.4+ba.5/"
-            "bv+ba+ba.2+ba.3+ba.4/"
-            "bv+ba+ba.2+ba.3/"
-            "bv+ba+ba.2/"
-            "bv*+ba/best"
-        ) if all_audio else "bv*+ba/best",
-        "audio_multistreams": all_audio,
-        "ignoreerrors": True,  # Continue on download errors
-        "no_warnings": False,  # Show warnings so user knows what failed
-        "download_archive": ".ytdlp-archive.txt",
-        "fragment_retries": 10,
-        "skip_unavailable_fragments": False,  # Abort instead of looping
-    }
-    if subtitles:
-        ydl_opts["writesubtitles"] = True
-        ydl_opts["subtitleslangs"] = ["all"]
 
+def _execute_download(url: str, ydl_opts: dict) -> tuple[int, bool]:
+    """Run yt-dlp download and post-process results. Returns (processed_count, had_errors)."""
     had_errors = False
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -197,6 +200,89 @@ def download_video(url: str) -> tuple[int, bool]:
             print("Continuing to next item...")
 
     return processed, had_errors
+
+
+def download_video(url: str) -> tuple[int, bool]:
+    container = os.environ.get("YTDLP_NFO_FORMAT", "mkv")
+    all_audio = os.environ.get("YTDLP_NFO_ALL_AUDIO", "true").lower() == "true"
+    subtitles = os.environ.get("YTDLP_NFO_SUBTITLES", "true").lower() == "true"
+
+    base_opts = {
+        "outtmpl": "%(title)s/%(title)s.%(ext)s",
+        "merge_output_format": container,
+        "writeinfojson": True,
+        "writethumbnail": True,
+        "convert_thumbnails": "jpg",
+        "ignoreconfig": True,
+        "ignoreerrors": True,
+        "no_warnings": False,
+        "download_archive": ".ytdlp-archive.txt",
+        "fragment_retries": 10,
+        "skip_unavailable_fragments": False,
+    }
+    if subtitles:
+        base_opts["writesubtitles"] = True
+        base_opts["subtitleslangs"] = ["all"]
+
+    if not all_audio:
+        # Simple path: single audio, download everything in one pass
+        base_opts["format"] = "bv*+ba/best"
+        return _execute_download(url, base_opts)
+
+    # All-audio path: extract info first, then download per-video with tailored format
+    try:
+        with yt_dlp.YoutubeDL({"skip_download": True, "quiet": True, "no_warnings": True, "ignoreconfig": True, "ignoreerrors": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception:
+        # Discovery failed, fall back to single-audio download
+        print("⚠ Audio language discovery failed, falling back to single audio")
+        base_opts["format"] = "bv*+ba/best"
+        return _execute_download(url, base_opts)
+
+    entries = _flatten_entries(info)
+
+    had_errors = False
+    total_processed = 0
+    for entry in entries:
+        if entry is None:
+            continue
+        entry_url = entry.get("webpage_url") or entry.get("url") or entry.get("id")
+        if not entry_url:
+            continue
+
+        entry_title = make_safe_name(entry.get("title") or entry.get("fulltitle") or "video")
+
+        # Playlist entries lack format info — extract individually
+        if not entry.get("formats"):
+            try:
+                with yt_dlp.YoutubeDL({"skip_download": True, "quiet": True, "no_warnings": True, "ignoreconfig": True, "ignoreerrors": True}) as ydl:
+                    entry_info = ydl.extract_info(entry_url, download=False)
+                if entry_info:
+                    entry = entry_info
+            except Exception:
+                pass
+
+        lang_formats = discover_audio_formats(entry)
+        if len(lang_formats) > 1:
+            audio_ids = "+".join(lang_formats.values())
+            fmt = f"bv+{audio_ids}/bv*+ba/best"
+            labels = [f"{lang} ({ch}ch)" for lang, ch in lang_formats.keys()]
+            print(f"Found {len(lang_formats)} audio tracks for {entry_title}: {', '.join(labels)}")
+        else:
+            fmt = "bv*+ba/best"
+
+        opts = {
+            **base_opts,
+            "format": fmt,
+            "allow_multiple_audio_streams": len(lang_formats) > 1,
+            "outtmpl": f"{entry_title}/{entry_title}.%(ext)s",
+        }
+        processed, errors = _execute_download(entry_url, opts)
+        total_processed += processed
+        if errors:
+            had_errors = True
+
+    return total_processed, had_errors
 
 
 def main():
