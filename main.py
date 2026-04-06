@@ -6,7 +6,7 @@ import yt_dlp
 import yt_dlp.version
 import xml.etree.ElementTree as ET
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 
 
 def make_safe_name(name: str) -> str:
@@ -208,7 +208,7 @@ def download_video(url: str) -> tuple[int, bool]:
     subtitles = os.environ.get("YTDLP_NFO_SUBTITLES", "true").lower() == "true"
 
     base_opts = {
-        "outtmpl": "%(title)s/%(title)s.%(ext)s",
+        "outtmpl": "%(playlist_title&{}/|)s%(title)s/%(title)s.%(ext)s",
         "merge_output_format": container,
         "writeinfojson": True,
         "writethumbnail": True,
@@ -240,6 +240,7 @@ def download_video(url: str) -> tuple[int, bool]:
         return _execute_download(url, base_opts)
 
     entries = _flatten_entries(info)
+    playlist_title = make_safe_name(info.get("title") or "") if "entries" in info else None
 
     had_errors = False
     total_processed = 0
@@ -275,7 +276,7 @@ def download_video(url: str) -> tuple[int, bool]:
             **base_opts,
             "format": fmt,
             "allow_multiple_audio_streams": len(lang_formats) > 1,
-            "outtmpl": f"{entry_title}/{entry_title}.%(ext)s",
+            "outtmpl": f"{playlist_title}/{entry_title}/{entry_title}.%(ext)s" if playlist_title else f"{entry_title}/{entry_title}.%(ext)s",
         }
         processed, errors = _execute_download(entry_url, opts)
         total_processed += processed
