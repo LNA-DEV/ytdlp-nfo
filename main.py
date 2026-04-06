@@ -139,7 +139,13 @@ def download_video(url: str) -> tuple[int, bool]:
         "writethumbnail": True,
         "convert_thumbnails": "jpg",
         "ignoreconfig": True,
-        "format": "bv*+ba*/best" if all_audio else "bv*+ba/best",
+        "format": (
+            "bv+ba+ba.2+ba.3+ba.4+ba.5/"
+            "bv+ba+ba.2+ba.3+ba.4/"
+            "bv+ba+ba.2+ba.3/"
+            "bv+ba+ba.2/"
+            "bv*+ba/best"
+        ) if all_audio else "bv*+ba/best",
         "audio_multistreams": all_audio,
         "ignoreerrors": True,  # Continue on download errors
         "no_warnings": False,  # Show warnings so user knows what failed
