@@ -6,7 +6,7 @@ import yt_dlp
 import yt_dlp.version
 import xml.etree.ElementTree as ET
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"
 
 
 def make_safe_name(name: str) -> str:
@@ -239,8 +239,9 @@ def download_video(url: str) -> tuple[int, bool]:
         base_opts["format"] = "bv*+ba/best"
         return _execute_download(url, base_opts)
 
+    is_playlist = "entries" in info
+    playlist_title = make_safe_name(info.get("playlist_title") or info.get("title") or "") if is_playlist else None
     entries = _flatten_entries(info)
-    playlist_title = make_safe_name(info.get("title") or "") if "entries" in info else None
 
     had_errors = False
     total_processed = 0
